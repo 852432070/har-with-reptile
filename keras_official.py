@@ -27,14 +27,17 @@ from tensorflow.keras import layers
 import tensorflow_datasets as tfds
 import os
 
+from tensorflow.keras.layers import Dense, Flatten, Conv2D, ReLU, Dropout
+from tensorflow.keras import Model, regularizers
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 """
 ## Define the Hyperparameters
 """
 
-learning_rate = 0.003
-meta_step_size = 0.25
+learning_rate = 1e-4
+meta_step_size = 0.15
 
 inner_batch_size = 25
 eval_batch_size = 25
@@ -43,7 +46,7 @@ meta_iters = 40000
 eval_iters = 5
 inner_iters = 4
 
-eval_interval = 1
+eval_interval = 5
 train_shots = 20
 shots = 5
 classes = 5
@@ -189,23 +192,104 @@ test_dataset = Dataset(training=False)
 """
 
 
-def conv_bn(x):
-    x = layers.Conv2D(filters=64, kernel_size=(3,1), strides=2, padding="same")(x)
-    x = layers.BatchNormalization()(x)
-    return layers.ReLU()(x)
+# def conv_bn(x):
+#     x = layers.Conv2D(filters=64, kernel_size=(3,1), strides=2, padding="same")(x)
+#     x = layers.BatchNormalization()(x)
+#     return layers.ReLU()(x)
 
 
-inputs = layers.Input(shape=(171, 9, 1))
-x = conv_bn(inputs)
-x = conv_bn(x)
-x = conv_bn(x)
-x = conv_bn(x)
-x = layers.Flatten()(x)
-outputs = layers.Dense(classes, activation="softmax")(x)
-model = keras.Model(inputs=inputs, outputs=outputs)
-model.compile()
-optimizer = keras.optimizers.SGD(learning_rate=learning_rate)
+# inputs = layers.Input(shape=(171, 9, 1))
+# x = conv_bn(inputs)
+# x = conv_bn(x)
+# x = conv_bn(x)
+# x = conv_bn(x)
+# x = layers.Flatten()(x)
+# outputs = layers.Dense(classes, activation="softmax")(x)
+# model = keras.Model(inputs=inputs, outputs=outputs)
+# model.compile()
+# optimizer = keras.optimizers.SGD(learning_rate=learning_rate)
 
+#标准卷积块
+def conv_block(
+    inputs,
+    filters,
+    kernel_size=(3,1),
+    strides=(1,1)
+):
+    x = tf.keras.layers.Conv2D(filters, kernel_size=kernel_size, kernel_regularizer=regularizers.l2(0.01), strides=strides, padding='same', use_bias=False)(inputs)
+    x = tf.keras.layers.BatchNormalization()(x)
+    
+    return tf.keras.layers.ReLU(6.0)(x)
+##深度可分离卷积块
+def depthwise_conv_block(
+    inputs,
+    pointwise_conv_filters,
+    strides=(1,1),
+    expansion=6
+):
+    input_channel = inputs.shape[-1]
+
+    x = tf.keras.layers.Conv2D(input_channel * expansion, kernel_size=(1,1), padding='same', use_bias=False)(inputs)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.ReLU(6.0)(x)
+
+    x = tf.keras.layers.Conv2D(input_channel * expansion,(6, 1), padding='same', strides=strides, use_bias=False)(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.ReLU(6.0)(x)
+    
+    ###深度卷积到此结束
+    
+    ###下面是逐点卷积
+    x = tf.keras.layers.Conv2D(pointwise_conv_filters, kernel_size=(1,1), padding='same', use_bias=False)(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = Dropout(0.2)(x)
+    
+    identity = tf.keras.layers.Conv2D(pointwise_conv_filters, kernel_size=(1,1), padding='same', strides=strides, use_bias=False)(inputs)
+    identity = tf.keras.layers.BatchNormalization()(identity)
+    identity = Dropout(0.2)(identity)
+    
+    return tf.keras.layers.add([x,identity])
+ 
+#mobile_net
+def mobilenet_v1(
+    inputs,
+    classes
+):
+    channel_size = 8
+    ##特征提取层
+    x = conv_block(inputs, channel_size, strides=(2,1))
+#     x = depthwise_conv_block(x, 64)
+#     x = depthwise_conv_block(x, 64, strides=(2,1))
+    x = depthwise_conv_block(x, channel_size*2, strides=(2,1))
+#     x = depthwise_conv_block(x, 128)
+#     x = depthwise_conv_block(x, 128, strides=(2,1))
+    x = depthwise_conv_block(x, channel_size*4, strides=(2,1))
+#     x = depthwise_conv_block(x, 256)
+#     x = depthwise_conv_block(x, 256, strides=(2,1))
+#     x = depthwise_conv_block(x, 256)
+    x = depthwise_conv_block(x, channel_size*8, strides=(2,1))
+    x = depthwise_conv_block(x, channel_size*16)
+#     x = depthwise_conv_block(x, 512)
+#     x = depthwise_conv_block(x, 512)
+#     x = depthwise_conv_block(x, 512)
+#     x = depthwise_conv_block(x, 1024)
+    x = depthwise_conv_block(x, channel_size*32)
+#     x = depthwise_conv_block(x, 1024, strides=(2,1))
+#     x = depthwise_conv_block(x, channel_size)
+    
+    ##全局池化
+    x = tf.keras.layers.GlobalAveragePooling2D()(x)
+    x = Dense(64, activation='relu')(x)
+    ##全连接层
+    pred = tf.keras.layers.Dense(classes, kernel_regularizer=regularizers.l2(0.01), activation='softmax')(x)
+    
+    return pred
+ 
+ 
+##模型实例化
+inputs = tf.keras.Input(shape=(171,9,1))
+model = tf.keras.Model(inputs=inputs, outputs=mobilenet_v1(inputs, classes))
+optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 """
 ## Train the model
 """
