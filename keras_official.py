@@ -30,6 +30,8 @@ import os
 from tensorflow.keras.layers import Dense, Flatten, Conv2D, ReLU, Dropout
 from tensorflow.keras import Model, regularizers
 
+from sklearn.preprocessing import StandardScaler
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 """
@@ -71,10 +73,35 @@ test_x = np.load('/data/wang_sc/datasets/PAMAP2_Dataset/Processed0/x_test.npy').
 test_y = np.load('/data/wang_sc/datasets/PAMAP2_Dataset/Processed0/y_test.npy').astype(np.int32)
 
 
+# 将 train_x 和 test_x 沿着第一个轴（axis=0）进行合并
+merged_x = np.concatenate((train_x, test_x), axis=0)
+
+# 将 train_y 和 test_y 合并成一个数组
+merged_y = np.concatenate((train_y, test_y), axis=0)
+
+# 创建一个布尔掩码，标记标签值小于7的样本
+train_mask = merged_y < 7
+
+# 根据掩码将数据集划分为训练集和测试集
+train_x = merged_x[train_mask]
+train_y = merged_y[train_mask]
+test_x = merged_x[~train_mask]
+test_y = merged_y[~train_mask]
+
 train_shape = train_x.shape
-train_x = train_x.reshape(train_shape[0], train_shape[1], train_shape[2], 1)
+# train_x = train_x.reshape(train_shape[0], train_shape[1], train_shape[2], 1)
 test_shape = test_x.shape
-test_x = test_x.reshape(test_shape[0], test_shape[1], test_shape[2], 1)
+# test_x = test_x.reshape(test_shape[0], test_shape[1], test_shape[2], 1)
+print(train_shape)
+print(test_shape)
+print(train_y.shape)
+print(test_y.shape)
+
+scaler = StandardScaler()
+train_x = scaler.fit_transform(
+train_x.astype(np.float32).reshape(-1,1)).reshape(train_shape[0], train_shape[1], train_shape[2], 1)
+test_x = scaler.transform(
+test_x.astype(np.float32).reshape(-1,1)).reshape(test_shape[0], test_shape[1], test_shape[2], 1)
 
 # 将train_x中的元素按照train_y中的标签进行分类
 x_dict = {}
@@ -362,17 +389,17 @@ for meta_iter in range(meta_iters):
 ## Visualize Results
 """
 
-# First, some preprocessing to smooth the training and testing arrays for display.
-window_length = 100
-train_s = np.r_[
-    training[window_length - 1 : 0 : -1], training, training[-1:-window_length:-1]
-]
-test_s = np.r_[
-    testing[window_length - 1 : 0 : -1], testing, testing[-1:-window_length:-1]
-]
-w = np.hamming(window_length)
-train_y = np.convolve(w / w.sum(), train_s, mode="valid")
-test_y = np.convolve(w / w.sum(), test_s, mode="valid")
+# # First, some preprocessing to smooth the training and testing arrays for display.
+# window_length = 100
+# train_s = np.r_[
+#     training[window_length - 1 : 0 : -1], training, training[-1:-window_length:-1]
+# ]
+# test_s = np.r_[
+#     testing[window_length - 1 : 0 : -1], testing, testing[-1:-window_length:-1]
+# ]
+# w = np.hamming(window_length)
+# train_y = np.convolve(w / w.sum(), train_s, mode="valid")
+# test_y = np.convolve(w / w.sum(), test_s, mode="valid")
 
 # Display the training accuracies.
 x = np.arange(0, len(test_y), 1)
