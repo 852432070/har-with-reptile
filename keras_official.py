@@ -67,26 +67,34 @@ Omniglot is a great dataset for this task since there are many different classes
 from, with a reasonable number of samples for each class.
 """
 
-train_x = np.load('/data/wang_sc/datasets/PAMAP2_Dataset/Processed0/x_train.npy').astype(np.float32)
-train_y = np.load('/data/wang_sc/datasets/PAMAP2_Dataset/Processed0/y_train.npy').astype(np.int32)
-test_x = np.load('/data/wang_sc/datasets/PAMAP2_Dataset/Processed0/x_test.npy').astype(np.float32)
-test_y = np.load('/data/wang_sc/datasets/PAMAP2_Dataset/Processed0/y_test.npy').astype(np.int32)
+data_path = '/data/wang_sc/datasets/PAMAP2_Dataset/Processed0/'
+
+# %%
+train_x = np.load(data_path + 'x_train.npy').astype(np.float32)
+train_y = np.load(data_path + 'y_train.npy').astype(np.int32)
+test_x = np.load(data_path + 'x_test.npy').astype(np.float32)
+test_y = np.load(data_path + 'y_test.npy').astype(np.int32)
+
+# train_x = np.load('/data/wang_sc/datasets/PAMAP2_Dataset/Processed0/x_train.npy').astype(np.float32)
+# train_y = np.load('/data/wang_sc/datasets/PAMAP2_Dataset/Processed0/y_train.npy').astype(np.int32)
+# test_x = np.load('/data/wang_sc/datasets/PAMAP2_Dataset/Processed0/x_test.npy').astype(np.float32)
+# test_y = np.load('/data/wang_sc/datasets/PAMAP2_Dataset/Processed0/y_test.npy').astype(np.int32)
 
 
-# 将 train_x 和 test_x 沿着第一个轴（axis=0）进行合并
-merged_x = np.concatenate((train_x, test_x), axis=0)
+# # 将 train_x 和 test_x 沿着第一个轴（axis=0）进行合并
+# merged_x = np.concatenate((train_x, test_x), axis=0)
 
-# 将 train_y 和 test_y 合并成一个数组
-merged_y = np.concatenate((train_y, test_y), axis=0)
+# # 将 train_y 和 test_y 合并成一个数组
+# merged_y = np.concatenate((train_y, test_y), axis=0)
 
-# 创建一个布尔掩码，标记标签值小于7的样本
-train_mask = merged_y < 7
+# # 创建一个布尔掩码，标记标签值小于7的样本
+# train_mask = merged_y < 7
 
-# 根据掩码将数据集划分为训练集和测试集
-train_x = merged_x[train_mask]
-train_y = merged_y[train_mask]
-test_x = merged_x[~train_mask]
-test_y = merged_y[~train_mask]
+# # 根据掩码将数据集划分为训练集和测试集
+# train_x = merged_x[train_mask]
+# train_y = merged_y[train_mask]
+# test_x = merged_x[~train_mask]
+# test_y = merged_y[~train_mask]
 
 train_shape = train_x.shape
 # train_x = train_x.reshape(train_shape[0], train_shape[1], train_shape[2], 1)
