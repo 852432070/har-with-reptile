@@ -329,13 +329,19 @@ optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 ## Train the model
 """
 
+import math
+
+# 定义余弦退火函数
+def cosine_annealing(current_step, total_steps, initial_lr):
+    return initial_lr * 0.5 * (1 + math.cos(math.pi * current_step / total_steps))
+
 training = []
 testing = []
 for meta_iter in range(meta_iters):
     loss_sum = 0
     loss_num = 0
     frac_done = meta_iter / meta_iters
-    cur_meta_step_size = (1 - frac_done) * meta_step_size
+    cur_meta_step_size = cosine_annealing(meta_iter, meta_iters, meta_step_size)
     # Temporarily save the weights from the model.
     old_vars = model.get_weights()
     # Get a sample from the full dataset.
