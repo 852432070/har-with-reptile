@@ -39,12 +39,12 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 """
 
 learning_rate = 1e-4
-meta_step_size = 0.15
+meta_step_size = 0.1
 
 inner_batch_size = 25
 eval_batch_size = 25
 
-meta_iters = 40000
+meta_iters = 100000
 eval_iters = 5
 inner_iters = 4
 
@@ -67,7 +67,7 @@ Omniglot is a great dataset for this task since there are many different classes
 from, with a reasonable number of samples for each class.
 """
 
-data_path = '/data/wang_sc/datasets/PAMAP2_Dataset/Processed0/'
+data_path = '/data/wang_sc/datasets/PAMAP2_Dataset/Processed_unseen_tester_8/'
 
 # %%
 train_x = np.load(data_path + 'x_train.npy').astype(np.float32)
@@ -260,27 +260,56 @@ def depthwise_conv_block(
     inputs,
     pointwise_conv_filters,
     strides=(1,1),
-    expansion=6
+    expansion=4
 ):
     input_channel = inputs.shape[-1]
 
     x = tf.keras.layers.Conv2D(input_channel * expansion, kernel_size=(1,1), padding='same', use_bias=False)(inputs)
     x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.ReLU(6.0)(x)
+    x = tf.keras.layers.ReLU()(x)
 
     x = tf.keras.layers.Conv2D(input_channel * expansion,(6, 1), padding='same', strides=strides, use_bias=False)(x)
     x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.ReLU(6.0)(x)
+    x = tf.keras.layers.ReLU()(x)
     
     ###深度卷积到此结束
+
+
+
     
     ###下面是逐点卷积
     x = tf.keras.layers.Conv2D(pointwise_conv_filters, kernel_size=(1,1), padding='same', use_bias=False)(x)
     x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.ReLU()(x)
     x = Dropout(0.2)(x)
     
-    identity = tf.keras.layers.Conv2D(pointwise_conv_filters, kernel_size=(1,1), padding='same', strides=strides, use_bias=False)(inputs)
+    atte = tf.keras.layers.GlobalAveragePooling2D()(x)
+    atte = Dense(pointwise_conv_filters, activation='relu')(atte)
+    print("atte shape")
+    print(atte.shape)
+
+    x = tf.keras.layers.Multiply()([x, atte])
+    # avg_pool = tf.keras.layers.Lambda(lambda x: tf.keras.backend.mean(x, axis=[1, 3], keepdims=True))(x)
+    # print("avgpool shape")
+    # print(avg_pool.shape)
+    # max_pool = tf.keras.layers.Lambda(lambda x: tf.keras.backend.max(x, axis=[1, 3], keepdims=True))(x)
+    # concat = tf.keras.layers.Concatenate(axis=2)([avg_pool, max_pool])
+    # concat = Flatten()(concat)
+    # print("concat shape")
+    # print(concat.shape)
+    # # atte = tf.keras.layers.Conv2D(filters = 1, kernel_size=(6,1), padding='same', use_bias=False)(concat)
+    atte_c2 = Dense(9, activation='relu')(atte)
+    # atte = Dense(9, activation='relu')(concat)
+    
+    x = tf.keras.layers.Multiply()([x, tf.expand_dims(atte_c2, axis=2)])
+
+
+    # x = tf.keras.layers.Multiply()([x, tf.expand_dims(atte, axis=2)])
+
+
+    identity = tf.keras.layers.Conv2D(pointwise_conv_filters, kernel_size=(1,1), padding='same', strides=strides, use_bias=False, activation='sigmoid')(inputs)
     identity = tf.keras.layers.BatchNormalization()(identity)
+    x = tf.keras.layers.ReLU()(x)
     identity = Dropout(0.2)(identity)
     
     return tf.keras.layers.add([x,identity])
@@ -295,20 +324,20 @@ def mobilenet_v1(
     x = conv_block(inputs, channel_size, strides=(2,1))
 #     x = depthwise_conv_block(x, 64)
 #     x = depthwise_conv_block(x, 64, strides=(2,1))
-    x = depthwise_conv_block(x, channel_size*2, strides=(2,1))
+    # x = depthwise_conv_block(x, channel_size*2, strides=(2,1))
 #     x = depthwise_conv_block(x, 128)
 #     x = depthwise_conv_block(x, 128, strides=(2,1))
     x = depthwise_conv_block(x, channel_size*4, strides=(2,1))
 #     x = depthwise_conv_block(x, 256)
 #     x = depthwise_conv_block(x, 256, strides=(2,1))
 #     x = depthwise_conv_block(x, 256)
-    x = depthwise_conv_block(x, channel_size*8, strides=(2,1))
+    # x = depthwise_conv_block(x, channel_size*8, strides=(2,1))
     x = depthwise_conv_block(x, channel_size*16)
 #     x = depthwise_conv_block(x, 512)
 #     x = depthwise_conv_block(x, 512)
 #     x = depthwise_conv_block(x, 512)
 #     x = depthwise_conv_block(x, 1024)
-    x = depthwise_conv_block(x, channel_size*32)
+    # x = depthwise_conv_block(x, channel_size*32)
 #     x = depthwise_conv_block(x, 1024, strides=(2,1))
 #     x = depthwise_conv_block(x, channel_size)
     
@@ -331,9 +360,21 @@ optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 
 import math
 
+restart_periods = [10000, 20000, 30000, 40000]  # 重启周期列表
+
 # 定义余弦退火函数
-def cosine_annealing(current_step, total_steps, initial_lr):
-    return initial_lr * 0.5 * (1 + math.cos(math.pi * current_step / total_steps))
+def cosine_annealing_with_restarts(current_step, restart_periods, initial_lr):
+    # 计算当前周期和周期内的步骤
+    period_index = 0
+    while period_index < len(restart_periods) and current_step >= restart_periods[period_index]:
+        current_step -= restart_periods[period_index]
+        period_index += 1
+
+    # 如果在周期列表范围外，则使用最后一个周期
+    current_period = restart_periods[min(period_index, len(restart_periods) - 1)]
+    
+    # 调整学习率
+    return initial_lr * 0.5 * (1 + math.cos(math.pi * current_step / current_period))
 
 training = []
 testing = []
@@ -341,7 +382,8 @@ for meta_iter in range(meta_iters):
     loss_sum = 0
     loss_num = 0
     frac_done = meta_iter / meta_iters
-    cur_meta_step_size = cosine_annealing(meta_iter, meta_iters, meta_step_size)
+    cur_meta_step_size = cosine_annealing_with_restarts(meta_iter, restart_periods, meta_step_size)
+    # cur_meta_step_size = cosine_annealing(meta_iter, meta_iters, meta_step_size)
     # Temporarily save the weights from the model.
     old_vars = model.get_weights()
     # Get a sample from the full dataset.
