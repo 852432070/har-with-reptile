@@ -67,7 +67,7 @@ Omniglot is a great dataset for this task since there are many different classes
 from, with a reasonable number of samples for each class.
 """
 
-data_path = '/data/wang_sc/datasets/PAMAP2_Dataset/Processed_unseen_tester_8/'
+data_path = '/data/wang_sc/datasets/PAMAP2_Dataset/Processed_self_made_unseen_activity_7/'
 
 # %%
 train_x = np.load(data_path + 'x_train.npy').astype(np.float32)
